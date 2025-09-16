@@ -1,4 +1,3 @@
-from django.shortcuts import get_object_or_404
 from django_filters import rest_framework as filters
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.filters import OrderingFilter
@@ -21,6 +20,7 @@ from care.facility.models.facility import Facility
 from care.security.authorization.base import AuthorizationController
 from care.utils.filters.multiselect import MultiSelectFilter
 from care.utils.filters.null_filter import NullFilter
+from care.utils.shortcuts import get_object_or_404
 
 
 class TagConfigFilters(filters.FilterSet):
@@ -33,7 +33,6 @@ class TagConfigFilters(filters.FilterSet):
     organization = filters.UUIDFilter(
         lookup_expr="exact", field_name="organization__external_id"
     )
-    slug = filters.CharFilter(lookup_expr="icontains")
     status = filters.CharFilter(lookup_expr="iexact")
     display = filters.CharFilter(lookup_expr="icontains")
     category = filters.CharFilter(lookup_expr="iexact")

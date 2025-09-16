@@ -10,7 +10,6 @@ from pydantic import UUID4, BaseModel
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 
 from care.emr.api.viewsets.base import (
@@ -45,6 +44,7 @@ from care.emr.tasks.discharge_summary import generate_discharge_summary_task
 from care.facility.models import Facility
 from care.security.authorization import AuthorizationController
 from care.users.models import User
+from care.utils.shortcuts import get_object_or_404
 
 
 class LiveFilter(filters.CharFilter):
@@ -75,6 +75,7 @@ class EncounterFilters(filters.FilterSet):
     patient_filter = filters.UUIDFilter(field_name="patient__external_id")
     name = filters.CharFilter(field_name="patient__name", lookup_expr="icontains")
     location = filters.UUIDFilter(field_name="current_location__external_id")
+    created_date = filters.DateTimeFromToRangeFilter(field_name="created_date")
     live = LiveFilter()
 
 
@@ -142,6 +143,11 @@ class EncounterViewSet(
                 )
             if not organizations:
                 instance.sync_organization_cache()
+            if instance.appointment:
+                if instance.appointment.associated_encounter_id:
+                    raise ValidationError("Encounter already has an associated booking")
+                instance.appointment.associated_encounter = instance
+                instance.appointment.save(update_fields=["associated_encounter"])
 
     def perform_update(self, instance):
         with transaction.atomic():
