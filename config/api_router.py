@@ -33,6 +33,7 @@ from care.emr.api.viewsets.facility_organization import (
     FacilityOrganizationViewSet,
 )
 from care.emr.api.viewsets.file_upload import FileUploadViewSet
+from care.emr.api.viewsets.form_submission import FormSubmissionViewSet
 from care.emr.api.viewsets.healthcare_service import HealthcareServiceViewSet
 from care.emr.api.viewsets.inventory.delivery_order import DeliveryOrderViewSet
 from care.emr.api.viewsets.inventory.dispense_order import DispenseOrderViewSet
@@ -102,10 +103,13 @@ from care.emr.api.viewsets.user import UserViewSet
 from care.emr.api.viewsets.valueset import ValueSetViewSet
 from care.security.api.viewsets.permissions import PermissionViewSet
 from care.security.api.viewsets.roles import RoleViewSet
+from care.users.api.viewsets.plug_config import PlugConfigViewset
 
 router = DefaultRouter() if settings.DEBUG else SimpleRouter()
 
 router.register("users", UserViewSet, basename="users")
+
+router.register("plug_config", PlugConfigViewset, basename="plug_configs")
 
 user_nested_router = NestedSimpleRouter(router, r"users", lookup="users")
 
@@ -126,6 +130,13 @@ router.register("valueset", ValueSetViewSet, basename="value-set")
 
 router.register("questionnaire", QuestionnaireViewSet, basename="questionnaire")
 
+questionnaire_nested_router = NestedSimpleRouter(
+    router, r"questionnaire", lookup="questionnaire"
+)
+
+questionnaire_nested_router.register(
+    "form_submission", FormSubmissionViewSet, basename="form_submission"
+)
 router.register(
     "questionnaire_tag", QuestionnaireTagsViewSet, basename="questionnaire_tags"
 )
@@ -489,4 +500,5 @@ urlpatterns = [
     path("", include(facility_organization_nested_router.urls)),
     path("", include(facility_location_nested_router.urls)),
     path("", include(device_nested_router.urls)),
+    path("", include(questionnaire_nested_router.urls)),
 ]
