@@ -67,8 +67,18 @@ class ServiceRequestFilters(filters.FilterSet):
     intent = filters.CharFilter(lookup_expr="iexact")
     do_not_perform = filters.BooleanFilter()
     encounter = filters.UUIDFilter(field_name="encounter__external_id")
+    encounter_class = filters.CharFilter(
+        field_name="encounter__encounter_class", lookup_expr="iexact"
+    )
     patient = filters.UUIDFilter(field_name="patient__external_id")
     requester = filters.UUIDFilter(field_name="requester__external_id")
+    patient_current_location = filters.UUIDFilter(
+        field_name="encounter__current_location__external_id"
+    )
+    activity_definition = filters.CharFilter(
+        lookup_expr="iexact", field_name="activity_definition__slug"
+    )
+    created_date = filters.DateTimeFromToRangeFilter(field_name="created_date")
 
 
 class ApplyActivityDefinitionRequest(BaseModel):
@@ -281,8 +291,8 @@ class ServiceRequestViewSet(
                 service_resource=ChargeItemResourceOptions.service_request.value,
             ):
                 handle_charge_item_cancel(charge_item)
-                instance.charge_item.status = ChargeItemStatusOptions.aborted.value
-                instance.charge_item.save()
+                charge_item.status = ChargeItemStatusOptions.aborted.value
+                charge_item.save()
             instance.save(update_fields=["status", "updated_by"])
         return Response(status=status.HTTP_204_NO_CONTENT)
 

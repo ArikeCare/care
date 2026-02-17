@@ -37,8 +37,8 @@ class CustomUserManager(UserManager):
 
     def create_superuser(self, username, email, password, **extra_fields):
         extra_fields["phone_number"] = "+919696969696"
-        extra_fields["gender"] = 3
-        extra_fields["user_type"] = 40
+        extra_fields["gender"] = "non_binary"
+        extra_fields["user_type"] = "administrator"
         return super().create_superuser(username, email, password, **extra_fields)
 
     def make_random_password(
@@ -165,6 +165,8 @@ class User(AbstractUser):
     prefix = models.CharField(max_length=10, blank=True, null=True)
     suffix = models.CharField(max_length=50, blank=True, null=True)
 
+    is_service_account = models.BooleanField(default=False)
+
     verified = models.BooleanField(default=False)
     deleted = models.BooleanField(default=False)
 
@@ -174,6 +176,10 @@ class User(AbstractUser):
     pf_auth = models.TextField(default=None, null=True)
     totp_secret = models.TextField(blank=True, null=True)
     mfa_settings = models.JSONField(default=dict, blank=True)
+
+    # Preferences
+
+    preferences = models.JSONField(default=dict)
 
     objects = CustomUserManager()
 
