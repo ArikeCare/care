@@ -80,23 +80,20 @@ class PatientBaseSpec(EMRResource):
 
 
 def validate_identifier_config(config, value, obj=None):
-    queryset = PatientIdentifier.objects.filter(value=value)
-    if "config_obj" in config:
-        queryset = queryset.filter(config=config["config_obj"])
-    else:
-        queryset = queryset.filter(config__external_id=config["id"])
-    if obj:
-        queryset = queryset.exclude(patient=obj)
-    if config["config"]["unique"] and queryset.exists():
-        err = f"Identifier config {config['config']['system']} is not unique"
-        raise ValueError(err)
-    if (
-        value
-        and config["config"]["regex"]
-        and not re.match(config["config"]["regex"], value)
-    ):
-        err = f"Identifier config {config['config']['system']} is not valid"
-        raise ValueError(err)
+    if value:
+        queryset = PatientIdentifier.objects.filter(value=value)
+        if "config_obj" in config:
+            queryset = queryset.filter(config=config["config_obj"])
+        else:
+            queryset = queryset.filter(config__external_id=config["id"])
+        if obj:
+            queryset = queryset.exclude(patient=obj)
+        if config["config"]["unique"] and queryset.exists():
+            err = f"Identifier config {config['config']['system']} is not unique"
+            raise ValueError(err)
+        if config["config"]["regex"] and not re.match(config["config"]["regex"], value):
+            err = f"Identifier config {config['config']['system']} is not valid"
+            raise ValueError(err)
 
 
 class PatientIdentifierConfigRequest(BaseModel):
@@ -268,17 +265,13 @@ class PatientRetrieveSpec(
     @classmethod
     def perform_extra_serialization(cls, mapping, obj, *args, **kwargs):
         from care.emr.resources.organization.spec import OrganizationReadSpec
-        from care.emr.resources.user.spec import UserSpec
 
         super().perform_extra_serialization(mapping, obj, *args, **kwargs)
         if obj.geo_organization:
             mapping["geo_organization"] = OrganizationReadSpec.serialize(
                 obj.geo_organization
             ).to_json()
-        if obj.created_by:
-            mapping["created_by"] = UserSpec.serialize(obj.created_by).to_json()
-        if obj.updated_by:
-            mapping["updated_by"] = UserSpec.serialize(obj.updated_by).to_json()
+        cls.serialize_audit_users(mapping, obj)
         if obj.instance_identifiers:
             mapping["instance_identifiers"] = [
                 {

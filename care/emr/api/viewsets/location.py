@@ -8,7 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
-from care.emr.api.viewsets.base import EMRModelViewSet
+from care.emr.api.viewsets.base import EMRModelViewSet, EMRTagMixin
 from care.emr.models import (
     Encounter,
     FacilityLocation,
@@ -31,6 +31,8 @@ from care.emr.resources.location.spec import (
     LocationAvailabilityStatusChoices,
     LocationEncounterAvailabilityStatusChoices,
 )
+from care.emr.resources.tag.config_spec import TagResource
+from care.emr.tagging.filters import SingleFacilityTagFilter
 from care.facility.models import Facility
 from care.security.authorization import AuthorizationController
 from care.utils.lock import Lock
@@ -59,7 +61,7 @@ class FacilityLocationFilter(filters.FilterSet):
     available = AvailabilityFilter(field_name="available")
 
 
-class FacilityLocationViewSet(EMRModelViewSet):
+class FacilityLocationViewSet(EMRModelViewSet, EMRTagMixin):
     database_model = FacilityLocation
     pydantic_model = FacilityLocationWriteSpec
     pydantic_read_model = FacilityLocationListSpec
@@ -69,8 +71,10 @@ class FacilityLocationViewSet(EMRModelViewSet):
     filter_backends = [
         filters.DjangoFilterBackend,
         rest_framework_filters.OrderingFilter,
+        SingleFacilityTagFilter,
     ]
     ordering_fields = ["sort_index"]
+    resource_type = TagResource.location
 
     def get_facility_obj(self):
         return get_object_or_404(
@@ -86,12 +90,17 @@ class FacilityLocationViewSet(EMRModelViewSet):
     def perform_destroy(self, instance):
         parent = instance.parent
         with transaction.atomic():
-            super().perform_destroy(instance)
+            instance.deleted = True
+            instance.updated_by = self.request.user
+            instance.save(update_fields=["deleted", "updated_by", "modified_date"])
             if parent:
                 parent.has_children = FacilityLocation.objects.filter(
                     parent=parent
                 ).exists()
-                parent.save(update_fields=["has_children"])
+                parent.updated_by = self.request.user
+                parent.save(
+                    update_fields=["has_children", "updated_by", "modified_date"]
+                )
 
     def validate_data(self, instance, model_obj=None):
         facility = self.get_facility_obj()
@@ -293,10 +302,27 @@ class FacilityLocationEncounterViewSet(EMRModelViewSet):
         )
 
     def authorize_update(self, request_obj, model_instance):
-        return self.authorize_create(model_instance)
+        self.authorize_create(model_instance)
+        location = self.get_location_obj()
+        if location.id != model_instance.location_id:
+            raise ValidationError(
+                "Location encounter does not belong to the specified location"
+            )
 
     def authorize_destroy(self, instance):
-        return self.authorize_create(instance)
+        return self.authorize_update({}, instance)
+
+    def authorize_retrieve(self, model_instance):
+        location = self.get_location_obj()
+        facility = self.get_facility_obj()
+        if not AuthorizationController.call(
+            "can_list_facility_location_obj", self.request.user, facility, location
+        ):
+            raise PermissionDenied("You do not have permission to given location")
+        if location.id != model_instance.location.id:
+            raise ValidationError(
+                "Location encounter does not belong to the specified location"
+            )
 
     def reset_encounter_location_association(self, location):
         """
@@ -311,7 +337,10 @@ class FacilityLocationEncounterViewSet(EMRModelViewSet):
         all_encounters = Encounter.objects.filter(current_location=location)
         if active_location_encounter:
             active_location_encounter.encounter.current_location = location
-            active_location_encounter.encounter.save(update_fields=["current_location"])
+            active_location_encounter.encounter.updated_by = self.request.user
+            active_location_encounter.encounter.save(
+                update_fields=["current_location", "updated_by", "modified_date"]
+            )
             all_encounters = all_encounters.exclude(
                 id=active_location_encounter.encounter_id
             )
@@ -324,8 +353,16 @@ class FacilityLocationEncounterViewSet(EMRModelViewSet):
             location.system_availability_status = (
                 LocationAvailabilityStatusChoices.available.value
             )
-        all_encounters.update(current_location=None)
-        location.save(update_fields=["current_encounter", "system_availability_status"])
+        all_encounters.update(current_location=None, updated_by=self.request.user)
+        location.updated_by = self.request.user
+        location.save(
+            update_fields=[
+                "current_encounter",
+                "system_availability_status",
+                "updated_by",
+                "modified_date",
+            ]
+        )
 
     def authorize_create(self, instance):
         facility = self.get_facility_obj()
@@ -363,7 +400,9 @@ class FacilityLocationEncounterViewSet(EMRModelViewSet):
     def perform_destroy(self, instance):
         location = instance.location
         with transaction.atomic(), Lock(f"facility_location:{location.id}"):
-            super().perform_destroy(instance)
+            instance.deleted = True
+            instance.updated_by = self.request.user
+            instance.save(update_fields=["deleted", "updated_by", "modified_date"])
             self.reset_encounter_location_association(instance.location)
 
     def _validate_data(self, instance, model_obj=None):  # noqa PLR0912
@@ -470,13 +509,26 @@ class FacilityLocationEncounterViewSet(EMRModelViewSet):
     def get_queryset(self):
         location = self.get_location_obj()
         facility = self.get_facility_obj()
-        if not AuthorizationController.call(
-            "can_list_facility_location_obj", self.request.user, facility, location
-        ):
-            raise PermissionDenied("You do not have permission to given location")
-        return FacilityLocationEncounter.objects.filter(location=location).order_by(
-            "-created_date"
+        queryset = (
+            super()
+            .get_queryset()
+            .select_related(
+                "location",
+                "encounter",
+                "encounter__patient",
+                "encounter__facility",
+                "encounter__current_location",
+                "encounter__appointment",
+            )
+            .order_by("-modified_date")
         )
+        if self.action == "list":
+            if not AuthorizationController.call(
+                "can_list_facility_location_obj", self.request.user, facility, location
+            ):
+                raise PermissionDenied("You do not have permission to given location")
+            return queryset.filter(location=location).order_by("-created_date")
+        return queryset
 
 
 def close_related_location_from_encounter(instance):

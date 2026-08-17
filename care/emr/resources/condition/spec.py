@@ -9,7 +9,6 @@ from care.emr.models.encounter import Encounter
 from care.emr.resources.base import EMRResource
 from care.emr.resources.common.coding import Coding
 from care.emr.resources.condition.valueset import CARE_CODITION_CODE_VALUESET
-from care.emr.resources.user.spec import UserSpec
 from care.emr.utils.valueset_coding_type import ValueSetBoundCoding
 from care.utils.shortcuts import get_object_or_404
 from care.utils.time_util import care_now
@@ -113,14 +112,13 @@ class ConditionReadSpec(BaseConditionSpec):
     clinical_status: str
     verification_status: str
     category: str
-    criticality: str
     severity: str
     code: Coding
     encounter: UUID4
     onset: ConditionOnSetSpec = {}
     abatement: ConditionAbatementSpec = {}
-    created_by: UserSpec = {}
-    updated_by: UserSpec = {}
+    created_by: dict | None = None
+    updated_by: dict | None = None
     note: str | None = None
     created_date: datetime.datetime
     modified_date: datetime.datetime
@@ -130,11 +128,7 @@ class ConditionReadSpec(BaseConditionSpec):
         mapping["id"] = obj.external_id
         if obj.encounter:
             mapping["encounter"] = obj.encounter.external_id
-
-        if obj.created_by:
-            mapping["created_by"] = UserSpec.serialize(obj.created_by)
-        if obj.updated_by:
-            mapping["updated_by"] = UserSpec.serialize(obj.updated_by)
+        cls.serialize_audit_users(mapping, obj)
 
 
 class ConditionUpdateSpec(BaseConditionSpec):

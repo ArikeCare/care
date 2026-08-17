@@ -7,7 +7,7 @@ from care.emr.models import Encounter, FacilityLocationEncounter
 from care.emr.models.location import FacilityLocation
 from care.emr.resources.base import EMRResource
 from care.emr.resources.common import Coding
-from care.emr.resources.user.spec import UserSpec
+from care.emr.tagging.base import SingleFacilityTagManager
 
 
 class LocationEncounterAvailabilityStatusChoices(str, Enum):
@@ -136,13 +136,15 @@ class FacilityLocationListSpec(FacilityLocationMinimalListSpec):
     has_children: bool
     system_availability_status: str
     current_encounter: dict | None = None
+    tags: list[dict] = []
 
     @classmethod
     def perform_extra_serialization(cls, mapping, obj):
         from care.emr.resources.encounter.spec import EncounterListSpec
 
         super().perform_extra_serialization(mapping, obj)
-
+        if obj.tags:
+            mapping["tags"] = SingleFacilityTagManager().render_tags(obj)
         if obj.current_encounter:
             mapping["current_encounter"] = EncounterListSpec.serialize(
                 obj.current_encounter
@@ -156,10 +158,7 @@ class FacilityLocationRetrieveSpec(FacilityLocationListSpec):
     @classmethod
     def perform_extra_serialization(cls, mapping, obj):
         super().perform_extra_serialization(mapping, obj)
-        if obj.created_by:
-            mapping["created_by"] = UserSpec.serialize(obj.created_by)
-        if obj.updated_by:
-            mapping["updated_by"] = UserSpec.serialize(obj.updated_by)
+        cls.serialize_audit_users(mapping, obj)
 
 
 class FacilityLocationEncounterBaseSpec(EMRResource):

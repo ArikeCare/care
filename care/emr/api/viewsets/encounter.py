@@ -179,7 +179,14 @@ class EncounterViewSet(
                 if instance.appointment.associated_encounter_id:
                     raise ValidationError("Encounter already has an associated booking")
                 instance.appointment.associated_encounter = instance
-                instance.appointment.save(update_fields=["associated_encounter"])
+                instance.appointment.updated_by = self.request.user
+                instance.appointment.save(
+                    update_fields=[
+                        "associated_encounter",
+                        "updated_by",
+                        "modified_date",
+                    ]
+                )
 
     def perform_update(self, instance):
         with transaction.atomic():
@@ -264,8 +271,9 @@ class EncounterViewSet(
         ):
             err = f"Encounter cannot be restarted after {settings.ENCOUNTER_RESTART_TIME_LIMIT_HOURS} hours"
             raise ValidationError(err)
+        instance.updated_by = self.request.user
         instance.status = StatusChoices.in_progress.value
-        instance.save(update_fields=["status"])
+        instance.save(update_fields=["status", "updated_by", "modified_date"])
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -343,7 +351,7 @@ class EncounterViewSet(
         set_default: bool = False
 
     @action(detail=True, methods=["POST"])
-    def set_facility_idenitifier(self, request, *args, **kwargs):
+    def set_facility_identifier(self, request, *args, **kwargs):
         request_data = self.EncounterFacilityIdentifierWriteSpec(**request.data)
         encounter = self.get_object()
         self.authorize_update({}, encounter)
@@ -417,5 +425,13 @@ class EncounterViewSet(
             )
 
         encounter.care_team = members
-        encounter.save(update_fields=["care_team", "care_team_users"])
+        encounter.updated_by = request.user
+        encounter.save(
+            update_fields=[
+                "care_team",
+                "care_team_users",
+                "updated_by",
+                "modified_date",
+            ]
+        )
         return Response({}, status=status.HTTP_200_OK)
